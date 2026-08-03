@@ -36,4 +36,50 @@ def update_driver_status(current_status):
         )[0]
 
 def generate_telemetry_ping(driver_id):
-     return None
+    state =  driver_fleet[driver_id]
+    new_status = update_driver_status(state["status"])
+    state["status"] = new_status
+
+    if new_status!="OFFLINE":
+        state["lat"]+= random.uniform(-0.001, 0.001)
+        state["lon"]+= random.uniform(-0.001, 0.001)
+
+    speed = (
+         round(random.uniform(15, 55), 1) if new_status!="OFFLINE" else 0.0 
+    )
+
+    payload = {
+         "event_id": str(uuid.uuid4()),
+         "driver_id": driver_id,
+         "timestamp": int(datetime.now(datetime.timezone.utc).timestamp()),
+         "location": {
+              "latitude": round(state["lat"], 6),
+              "longitude": round(state["lon"], 6),
+         },
+         "status": new_status,
+         "speed_kmh": speed,
+    }
+    return payload
+
+if __name__ == "__main__":
+    print(f"Starting producer for topic: '{TOPIC_NAME}'")
+
+    try:
+        while True:
+            for driver_id in driver_fleet.keys():
+                telemetry = generate_telemetry_ping(driver_id)
+                producer.send(
+                    topic=TOPIC_NAME, key=driver_id, value=telemetry
+                )
+                print(
+                    f"[{telemetry['status']:^9}] Driver: {driver_id} | "
+                    f"Lat/Lon: ({telemetry['location']['latitude']}, {telemetry['location']['longitude']}) | "
+                    f"Speed: {telemetry['speed_kmh']} km/h"
+                )
+
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\n🛑 Shutting down Producer cleanly...")
+        producer.flush()
+        producer.close()
+        print("Done.")
