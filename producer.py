@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime, UTC
 import json
 import random
 import time
@@ -51,7 +51,7 @@ def generate_telemetry_ping(driver_id):
     payload = {
          "event_id": str(uuid.uuid4()),
          "driver_id": driver_id,
-         "timestamp": int(datetime.now(datetime.timezone.utc).timestamp()),
+         "timestamp" : int(datetime.now(UTC).timestamp()),
          "location": {
               "latitude": round(state["lat"], 6),
               "longitude": round(state["lon"], 6),
