@@ -1,2 +1,3 @@
 .venv
 kafka-stack-docker-compose/
+checkpoints/
