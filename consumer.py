@@ -16,7 +16,10 @@ spark = (
     SparkSession.builder.appName("UberTelemetryConsumer")
     .config("spark.jars.packages", kafka_package)
     # Configure local directory access
-    .config("spark.sql.warehouse.dir", "file:///" + os.path.abspath("spark-warehouse").replace("\\", "/"))
+    .config(
+        "spark.sql.warehouse.dir",
+        "file:///" + os.path.abspath("spark-warehouse").replace("\\", "/"),
+    )
     .getOrCreate()
 )
 
@@ -36,9 +39,7 @@ telemetry_schema = (
     .add("timestamp", IntegerType())
     .add(
         "location",
-        StructType()
-        .add("latitude", DoubleType())
-        .add("longitude", DoubleType()),
+        StructType().add("latitude", DoubleType()).add("longitude", DoubleType()),
     )
     .add("status", StringType())
     .add("speed_kmh", DoubleType())
@@ -58,9 +59,7 @@ parsed_telemetry_df = (
     raw_kafka_df.selectExpr("CAST(value AS STRING) as json_payload")
     .select(F.from_json(F.col("json_payload"), telemetry_schema).alias("data"))
     .select("data.*")
-    .withColumn(
-        "event_time", F.from_unixtime(F.col("timestamp")).cast("timestamp")
-    )
+    .withColumn("event_time", F.from_unixtime(F.col("timestamp")).cast("timestamp"))
     .withColumn("year", F.year(F.col("event_time")))
     .withColumn("month", F.month(F.col("event_time")))
     .withColumn("day", F.dayofmonth(F.col("event_time")))

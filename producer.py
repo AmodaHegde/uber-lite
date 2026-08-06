@@ -21,45 +21,42 @@ driver_fleet = {
     "drv_105": {"lat": 12.9223, "lon": 77.5811, "status": "OFFLINE"},
 }
 
+
 def update_driver_status(current_status):
     if current_status == "ON_TRIP":
-        return random.choices(
-            ["ON_TRIP", "AVAILABLE"], weights=[0.8, 0.2]
-        )[0]
+        return random.choices(["ON_TRIP", "AVAILABLE"], weights=[0.8, 0.2])[0]
     elif current_status == "AVAILABLE":
-            return random.choices(
-                ["ON_TRIP", "AVAILABLE", "OFFLINE"], weights=[0.5, 0.4, 0.1]
-            )[0]
-    else:
         return random.choices(
-            ["AVAILABLE", "OFFLINE"], weights=[0.7, 0.3]
+            ["ON_TRIP", "AVAILABLE", "OFFLINE"], weights=[0.5, 0.4, 0.1]
         )[0]
+    else:
+        return random.choices(["AVAILABLE", "OFFLINE"], weights=[0.7, 0.3])[0]
+
 
 def generate_telemetry_ping(driver_id):
-    state =  driver_fleet[driver_id]
+    state = driver_fleet[driver_id]
     new_status = update_driver_status(state["status"])
     state["status"] = new_status
 
-    if new_status!="OFFLINE":
-        state["lat"]+= random.uniform(-0.001, 0.001)
-        state["lon"]+= random.uniform(-0.001, 0.001)
+    if new_status != "OFFLINE":
+        state["lat"] += random.uniform(-0.001, 0.001)
+        state["lon"] += random.uniform(-0.001, 0.001)
 
-    speed = (
-         round(random.uniform(15, 55), 1) if new_status!="OFFLINE" else 0.0 
-    )
+    speed = round(random.uniform(15, 55), 1) if new_status != "OFFLINE" else 0.0
 
     payload = {
-         "event_id": str(uuid.uuid4()),
-         "driver_id": driver_id,
-         "timestamp" : int(datetime.now(UTC).timestamp()),
-         "location": {
-              "latitude": round(state["lat"], 6),
-              "longitude": round(state["lon"], 6),
-         },
-         "status": new_status,
-         "speed_kmh": speed,
+        "event_id": str(uuid.uuid4()),
+        "driver_id": driver_id,
+        "timestamp": int(datetime.now(UTC).timestamp()),
+        "location": {
+            "latitude": round(state["lat"], 6),
+            "longitude": round(state["lon"], 6),
+        },
+        "status": new_status,
+        "speed_kmh": speed,
     }
     return payload
+
 
 if __name__ == "__main__":
     print(f"Starting producer for topic: '{TOPIC_NAME}'")
@@ -68,9 +65,7 @@ if __name__ == "__main__":
         while True:
             for driver_id in driver_fleet.keys():
                 telemetry = generate_telemetry_ping(driver_id)
-                producer.send(
-                    topic=TOPIC_NAME, key=driver_id, value=telemetry
-                )
+                producer.send(topic=TOPIC_NAME, key=driver_id, value=telemetry)
                 print(
                     f"[{telemetry['status']:^9}] Driver: {driver_id} | "
                     f"Lat/Lon: ({telemetry['location']['latitude']}, {telemetry['location']['longitude']}) | "

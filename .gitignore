@@ -1,3 +1,5 @@
 .venv
+.github
+.vscode
 kafka-stack-docker-compose/
 checkpoints/
