@@ -1,4 +1,14 @@
-.venv
-.vscode
-kafka-stack-docker-compose/
+# Virtual Environment
+.venv/
+
+# Caches & Temporary Files
+.ruff_cache/
+__pycache__/
+*.pyc
+
+# Spark Streaming Metadata & Output Data
 checkpoints/
+data_lake/
+
+# IDE settings
+.vscode/
