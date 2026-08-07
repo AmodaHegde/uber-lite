@@ -26,3 +26,28 @@ This project processes real-time vehicle location data. A Python script generate
 ### 1. Install Dependencies
 ```bash
 poetry install
+
+### 2. Start Kafka
+```bash
+docker compose -f kafka-stack-docker-compose/docker-compose.yml up -d
+
+### 3. Run the pipeline:
+In 2 terminals, run:
+```bash
+poetry run python producer.py
+```bash
+poetry run python consumer.py
+
+### 4. Date Lake layout:
+data_lake/
+└── raw_telemetry/
+    └── year=YYYY/
+        └── month=MM/
+            └── day=DD/
+                └── part-00000-....snappy.parquet
+###5. Run code quality checks
+```bash
+poetry run black --check .
+poetry run ruff check .
+
+
