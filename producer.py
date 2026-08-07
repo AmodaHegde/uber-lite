@@ -1,8 +1,9 @@
-from datetime import datetime, UTC
 import json
 import random
 import time
 import uuid
+from datetime import UTC, datetime
+
 from kafka import KafkaProducer
 
 producer = KafkaProducer(
@@ -63,7 +64,7 @@ if __name__ == "__main__":
 
     try:
         while True:
-            for driver_id in driver_fleet.keys():
+            for driver_id in driver_fleet:
                 telemetry = generate_telemetry_ping(driver_id)
                 producer.send(topic=TOPIC_NAME, key=driver_id, value=telemetry)
                 print(
