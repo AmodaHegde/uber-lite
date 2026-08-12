@@ -5,6 +5,14 @@ import uuid
 from datetime import UTC, datetime
 
 from kafka import KafkaProducer
+from sodapy import Socrata
+
+client = Socrata(
+    "data.cityofnewyork.us",
+    "VrIlUBJWAJoFck1mgPFU2v2nQ",
+    username="itsahegde@gmail.com",
+    password="ucc6WMEOX7FRPK",
+)
 
 producer = KafkaProducer(
     bootstrap_servers=["localhost:9092"],
