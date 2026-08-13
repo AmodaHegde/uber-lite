@@ -1,89 +1,63 @@
+import csv
 import json
-import random
-import time
-import uuid
+import signal
 from datetime import UTC, datetime
 
+from confluent_kafka import KafkaError
 from kafka import KafkaProducer
-from sodapy import Socrata
 
-client = Socrata(
-    "data.cityofnewyork.us",
-    "VrIlUBJWAJoFck1mgPFU2v2nQ",
-    username="itsahegde@gmail.com",
-    password="ucc6WMEOX7FRPK",
-)
-
-producer = KafkaProducer(
-    bootstrap_servers=["localhost:9092"],
-    value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-    key_serializer=lambda k: str(k).encode("utf-8"),
-)
-
-TOPIC_NAME = "driver-telemetry"
-
-driver_fleet = {
-    "drv_101": {"lat": 12.9716, "lon": 77.5946, "status": "AVAILABLE"},
-    "drv_102": {"lat": 12.9352, "lon": 77.6245, "status": "ON_TRIP"},
-    "drv_103": {"lat": 12.9141, "lon": 77.6387, "status": "AVAILABLE"},
-    "drv_104": {"lat": 12.9611, "lon": 77.6412, "status": "ON_TRIP"},
-    "drv_105": {"lat": 12.9223, "lon": 77.5811, "status": "OFFLINE"},
-}
+# Global flag to handle graceful shutdown
+running = True
 
 
-def update_driver_status(current_status):
-    if current_status == "ON_TRIP":
-        return random.choices(["ON_TRIP", "AVAILABLE"], weights=[0.8, 0.2])[0]
-    elif current_status == "AVAILABLE":
-        return random.choices(
-            ["ON_TRIP", "AVAILABLE", "OFFLINE"], weights=[0.5, 0.4, 0.1]
-        )[0]
-    else:
-        return random.choices(["AVAILABLE", "OFFLINE"], weights=[0.7, 0.3])[0]
+def handle_shutdown(sig, frame):
+    print("\n[INFO] Shutdown signal received. Stopping producer...")
 
 
-def generate_telemetry_ping(driver_id):
-    state = driver_fleet[driver_id]
-    new_status = update_driver_status(state["status"])
-    state["status"] = new_status
+signal.signal(signal.SIGINT, handle_shutdown)
 
-    if new_status != "OFFLINE":
-        state["lat"] += random.uniform(-0.001, 0.001)
-        state["lon"] += random.uniform(-0.001, 0.001)
 
-    speed = round(random.uniform(15, 55), 1) if new_status != "OFFLINE" else 0.0
+def create_producer():
+    return KafkaProducer(
+        bootstrap_servers=["localhost:9092"],
+        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+    )
 
-    payload = {
-        "event_id": str(uuid.uuid4()),
-        "driver_id": driver_id,
-        "timestamp": int(datetime.now(UTC).timestamp()),
-        "location": {
-            "latitude": round(state["lat"], 6),
-            "longitude": round(state["lon"], 6),
-        },
-        "status": new_status,
-        "speed_kmh": speed,
-    }
-    return payload
+
+def stream_raw_taxi_data(file_path, topic_name):
+    producer = create_producer()
+    total_records = 0
+
+    print(f"[INFO] Streaming from {file_path} to topic '{topic_name}'...")
+
+    try:
+        with open(file_path, mode="r", encoding="utf-8") as file:
+            reader = csv.DictReader(file)
+
+            for row in reader:
+                if not running:
+                    break
+
+                row["ingestion_timestamp"] = datetime.now(UTC).isoformat()
+
+                producer.send(topic_name, value=row)
+                total_records += 1
+
+                # Print progress every 1,000 records
+                if total_records % 1000 == 0:
+                    print(f"[INFO] Sent {total_records} records to Kafka...")
+
+    except KafkaError as e:
+        print(f"[ERROR] An unexpected error occurred: {e}")
+
+    finally:
+        print("[INFO] Flushing queued messages and closing producer...")
+        producer.flush()
+        producer.close()
+        print(f"[INFO] Producer stopped. Total records streamed: {total_records}")
 
 
 if __name__ == "__main__":
-    print(f"Starting producer for topic: '{TOPIC_NAME}'")
-
-    try:
-        while True:
-            for driver_id in driver_fleet:
-                telemetry = generate_telemetry_ping(driver_id)
-                producer.send(topic=TOPIC_NAME, key=driver_id, value=telemetry)
-                print(
-                    f"[{telemetry['status']:^9}] Driver: {driver_id} | "
-                    f"Lat/Lon: ({telemetry['location']['latitude']}, {telemetry['location']['longitude']}) | "
-                    f"Speed: {telemetry['speed_kmh']} km/h"
-                )
-
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\n🛑 Shutting down Producer cleanly...")
-        producer.flush()
-        producer.close()
-        print("Done.")
+    DATA_FILE = "/mnt/d/Downloads/taxi_part__1.csv"
+    TOPIC = "driver_telemetry"
+    stream_raw_taxi_data(DATA_FILE, TOPIC)

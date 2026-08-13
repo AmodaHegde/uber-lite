@@ -1,45 +1,46 @@
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
-from pydantic import BaseModel, Field
 
+@dataclass
+class DriverTelemetry:
+    # Identifiers
+    trip_id: str
+    taxi_id: str
 
-class HighVolumeFHVTrip(BaseModel):
-    # Base info
-    hvfhs_license_num: str | None = Field(
-        None, description="High Volume FHV license number"
+    # Timestamps & Durations
+    trip_start_timestamp: str | None = None
+    trip_end_timestamp: str | None = None
+    trip_seconds: int | None = None
+    trip_miles: float | None = None
+
+    # Location Information
+    pickup_census_tract: str | None = None
+    dropoff_census_tract: str | None = None
+    pickup_community_area: int | None = None
+    dropoff_community_area: int | None = None
+
+    # Centroid Coordinates
+    pickup_centroid_latitude: float | None = None
+    pickup_centroid_longitude: float | None = None
+    dropoff_centroid_latitude: float | None = None
+    dropoff_centroid_longitude: float | None = None
+
+    # Financial Details
+    fare: float | None = None
+    tips: float | None = None
+    tolls: float | None = None
+    extras: float | None = None
+    trip_total: float | None = None
+
+    # Payment & Company Metadata
+    payment_type: str | None = None
+    company: str | None = None
+
+    # System Tracking Field
+    ingestion_timestamp: str = field(
+        default_factory=lambda: datetime.now(tz=UTC).isoformat()
     )
-    dispatching_base_num: str | None = Field(
-        None, description="TLC base license number"
-    )
-    originating_base_num: str | None = Field(
-        None, description="Base receiving original request"
-    )
 
-    # Timestamps
-    request_datetime: datetime | None = None
-    on_scene_datetime: datetime | None = None
-    pickup_datetime: datetime | None = None
-    dropoff_datetime: datetime | None = None
-
-    # Locations & Distance
-    pulocationid: int | None = Field(None, ge=0, description="Pickup Taxi Zone ID")
-    dolocationid: int | None = Field(None, ge=0, description="Dropoff Taxi Zone ID")
-    trip_miles: float | None = Field(None, ge=0.0)
-    trip_time: int | None = Field(None, ge=0)
-
-    # Financials
-    base_passenger_fare: float | None = Field(None, ge=0.0)
-    tolls: float | None = Field(None, ge=0.0)
-    bcf: float | None = Field(None, ge=0.0)
-    sales_tax: float | None = Field(None, ge=0.0)
-    congestion_surcharge: float | None = Field(None, ge=0.0)
-    airport_fee: float | None = Field(None, ge=0.0)
-    tips: float | None = Field(None, ge=0.0)
-    driver_pay: float | None = Field(None)
-
-    # Flags
-    shared_request_flag: str | None = None
-    shared_match_flag: str | None = None
-    access_a_ride_flag: str | None = None
-    wav_request_flag: str | None = None
-    wav_match_flag: str | None = None
+    def to_dict(self) -> dict:
+        return self.__dict__
