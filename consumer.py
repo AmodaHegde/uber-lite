@@ -1,95 +1,93 @@
-import os
-
-import pyspark
-import pyspark.sql.functions as F
 from pyspark.sql import SparkSession
-from pyspark.sql.types import DoubleType, IntegerType, StringType, StructType
+from pyspark.sql.functions import col, dayofmonth, from_json, month, to_date, year
+from pyspark.sql.types import StringType, StructField, StructType
 
-# 1. Match package version to local PySpark
-pyspark_version = pyspark.__version__
-scala_version = "2.13" if pyspark_version.startswith("4") else "2.12"
-kafka_package = (
-    f"org.apache.spark:spark-sql-kafka-0-10_{scala_version}:{pyspark_version}"
-)
-
-# 2. Initialize SparkSession
+# 1. Initialize Spark Session with Delta Lake & Kafka dependencies
 spark = (
-    SparkSession.builder.appName("UberTelemetryConsumer")
-    .config("spark.jars.packages", kafka_package)
-    # Configure local directory access
+    SparkSession.builder.appName("UberLite-Bronze-Consumer")
     .config(
-        "spark.sql.warehouse.dir",
-        "file:///" + os.path.abspath("spark-warehouse").replace("\\", "/"),
+        "spark.jars.packages",
+        "io.delta:delta-spark_2.13:4.3.1,org.apache.spark:spark-sql-kafka-0-10_2.13:4.2.0",
+    )
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+    .config(
+        "spark.sql.catalog.spark_catalog",
+        "org.apache.spark.sql.delta.catalog.DeltaCatalog",
     )
     .getOrCreate()
 )
 
+# Set logging level to WARN to reduce console noise
 spark.sparkContext.setLogLevel("WARN")
 
-# --- WINDOWS HADOOP NativeIO PATCH ---
-if os.name == "nt":
-    spark.sparkContext._jsc.hadoopConfiguration().set(
-        "fs.permissions.umask-mode", "000"
-    )
-
-# 3. Define Schema
-telemetry_schema = (
-    StructType()
-    .add("event_id", StringType())
-    .add("driver_id", StringType())
-    .add("timestamp", IntegerType())
-    .add(
-        "location",
-        StructType().add("latitude", DoubleType()).add("longitude", DoubleType()),
-    )
-    .add("status", StringType())
-    .add("speed_kmh", DoubleType())
+# 2. Define strict raw schema (all string fields to preserve raw data as-is)
+raw_schema = StructType(
+    [
+        StructField("trip_id", StringType(), True),
+        StructField("taxi_id", StringType(), True),
+        StructField("trip_start_timestamp", StringType(), True),
+        StructField("trip_end_timestamp", StringType(), True),
+        StructField("trip_seconds", StringType(), True),
+        StructField("trip_miles", StringType(), True),
+        StructField("pickup_census_tract", StringType(), True),
+        StructField("dropoff_census_tract", StringType(), True),
+        StructField("pickup_community_area", StringType(), True),
+        StructField("dropoff_community_area", StringType(), True),
+        StructField("fare", StringType(), True),
+        StructField("tips", StringType(), True),
+        StructField("tolls", StringType(), True),
+        StructField("extras", StringType(), True),
+        StructField("trip_total", StringType(), True),
+        StructField("payment_type", StringType(), True),
+        StructField("company", StringType(), True),
+        StructField("pickup_centroid_latitude", StringType(), True),
+        StructField("pickup_centroid_longitude", StringType(), True),
+        StructField("pickup_centroid_location", StringType(), True),
+        StructField("dropoff_centroid_latitude", StringType(), True),
+        StructField("dropoff_centroid_longitude", StringType(), True),
+        StructField("dropoff_centroid_location", StringType(), True),
+        StructField("ingestion_timestamp", StringType(), True),
+    ]
 )
 
-# 4. Read Streaming Source from Kafka
-raw_kafka_df = (
+# 3. Read stream from Kafka topic
+kafka_stream_df = (
     spark.readStream.format("kafka")
     .option("kafka.bootstrap.servers", "localhost:9092")
-    .option("subscribe", "driver-telemetry")
-    .option("startingOffsets", "latest")
+    .option("subscribe", "driver_telemetry")
+    .option("startingOffsets", "earliest")
     .load()
 )
 
-# 5. Deserialize JSON & Format Date/Time Columns
-parsed_telemetry_df = (
-    raw_kafka_df.selectExpr("CAST(value AS STRING) as json_payload")
-    .select(F.from_json(F.col("json_payload"), telemetry_schema).alias("data"))
-    .select("data.*")
-    .withColumn("event_time", F.from_unixtime(F.col("timestamp")).cast("timestamp"))
-    .withColumn("year", F.year(F.col("event_time")))
-    .withColumn("month", F.month(F.col("event_time")))
-    .withColumn("day", F.dayofmonth(F.col("event_time")))
+# 4. Parse JSON payload and extract metadata + partition date columns
+parsed_df = (
+    kafka_stream_df.selectExpr(
+        "CAST(value AS STRING) as json_payload", "timestamp as kafka_record_timestamp"
+    )
+    .select(
+        from_json(col("json_payload"), raw_schema).alias("data"),
+        col("kafka_record_timestamp"),
+    )
+    .select("data.*", "kafka_record_timestamp")
+    .withColumn("ingestion_date", to_date(col("ingestion_timestamp")))
+    .withColumn("ingestion_year", year(col("ingestion_date")))
+    .withColumn("ingestion_month", month(col("ingestion_date")))
+    .withColumn("ingestion_day", dayofmonth(col("ingestion_date")))
 )
 
+# 5. Define paths
+bronze_table_path = "data_lake/bronze/taxi_trips"
+checkpoint_path = "checkpoints/bronze/taxi_trips"
 
-# 6. Multi-Sink Micro-Batch Callback
-def process_micro_batch(micro_batch_df, batch_id):
-    if micro_batch_df.isEmpty():
-        return
+# 6. Write stream to Delta Lake partitioned by ingestion date parts
+query = (
+    parsed_df.writeStream.format("delta")
+    .outputMode("append")
+    .partitionBy("ingestion_year", "ingestion_month", "ingestion_day")
+    .option("checkpointLocation", checkpoint_path)
+    .trigger(processingTime="5 seconds")
+    .start(bronze_table_path)
+)
 
-    print(f"Micro-Batch ID: {batch_id} | Rows: {micro_batch_df.count()}")
-
-    # Path 1: Append Parquet files to Data Lake
-    data_lake_path = "./data_lake/raw_telemetry/"
-    (
-        micro_batch_df.write.mode("append")
-        .partitionBy("year", "month", "day")
-        .parquet(data_lake_path)
-    )
-    print(f"✅ [Data Lake] Appended batch to {data_lake_path}")
-
-
-# 7. Start Query Stream
-if __name__ == "__main__":
-    query = (
-        parsed_telemetry_df.writeStream.foreachBatch(process_micro_batch)
-        .option("checkpointLocation", "./checkpoints/telemetry_consumer/")
-        .start()
-    )
-
-    query.awaitTermination()
+print(f"[INFO] Bronze streaming query active. Writing to: {bronze_table_path}")
+query.awaitTermination()

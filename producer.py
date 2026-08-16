@@ -3,18 +3,22 @@ import json
 import signal
 from datetime import UTC, datetime
 
-from confluent_kafka import KafkaError
 from kafka import KafkaProducer
+from kafka.errors import KafkaError
 
 # Global flag to handle graceful shutdown
 running = True
 
 
 def handle_shutdown(sig, frame):
+    global running
     print("\n[INFO] Shutdown signal received. Stopping producer...")
+    running = False
 
 
+# Handle both Ctrl+C (SIGINT) and process kill (SIGTERM)
 signal.signal(signal.SIGINT, handle_shutdown)
+signal.signal(signal.SIGTERM, handle_shutdown)
 
 
 def create_producer():
@@ -48,7 +52,7 @@ def stream_raw_taxi_data(file_path, topic_name):
                     print(f"[INFO] Sent {total_records} records to Kafka...")
 
     except KafkaError as e:
-        print(f"[ERROR] An unexpected error occurred: {e}")
+        print(f"[ERROR] An unexpected Kafka error occurred: {e}")
 
     finally:
         print("[INFO] Flushing queued messages and closing producer...")
@@ -58,6 +62,6 @@ def stream_raw_taxi_data(file_path, topic_name):
 
 
 if __name__ == "__main__":
-    DATA_FILE = "/mnt/d/Downloads/taxi_part__1.csv"
+    DATA_FILE = "/mnt/d/Downloads/taxi_part__1_cleaned.csv"
     TOPIC = "driver_telemetry"
     stream_raw_taxi_data(DATA_FILE, TOPIC)
