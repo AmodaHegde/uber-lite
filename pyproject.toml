@@ -16,6 +16,7 @@ dependencies = [
 
 [tool.poetry]
 package-mode = false
+packages = [{include = "uber_lite", from = "src"}]
 
 [tool.black]
 line-length = 88
