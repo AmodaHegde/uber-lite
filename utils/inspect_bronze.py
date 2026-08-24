@@ -19,13 +19,11 @@ delta_df = spark.read.format("delta").load("data_lake/bronze/taxi_trips")
 delta_df.createOrReplaceTempView("bronze_trips")
 
 # Run standard SQL queries
-result = spark.sql(
-    """
+result = spark.sql("""
     SELECT
     `trip_miles`
     FROM bronze_trips
     WHERE TRY_CAST(`trip_seconds` AS DOUBLE) < 100
-"""
-)
+""")
 
 result.show()
