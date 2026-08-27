@@ -1,29 +1,9 @@
 from pyspark.sql import SparkSession
 
-spark = (
-    SparkSession.builder.appName("Bronze-Trips-Query")
-    .config(
-        "spark.jars.packages",
-        "io.delta:delta-spark_2.13:4.3.1,org.apache.spark:spark-sql-kafka-0-10_2.13:4.2.0",
-    )
-    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-    .config(
-        "spark.sql.catalog.spark_catalog",
-        "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-    )
-    .getOrCreate()
-)
+spark = SparkSession.builder.appName("InspectBronze").getOrCreate()
 
-# Load the Delta table and register it as an SQL view
-delta_df = spark.read.format("delta").load("data_lake/bronze/taxi_trips")
-delta_df.createOrReplaceTempView("bronze_trips")
+path = "/home/amoda/uber-lite/data_lake/bronze/taxi_trips/ingestion_year=2026/ingestion_month=8/ingestion_day=16/part-00000-98fcd521-9945-46b4-8109-1b4cc1ee8edb.c000.snappy.parquet"
 
-# Run standard SQL queries
-result = spark.sql("""
-    SELECT
-    `trip_miles`
-    FROM bronze_trips
-    WHERE TRY_CAST(`trip_seconds` AS DOUBLE) < 100
-""")
+df = spark.read.parquet(path)
 
-result.show()
+print(df.select("payment_type").distinct().show(truncate=False))
