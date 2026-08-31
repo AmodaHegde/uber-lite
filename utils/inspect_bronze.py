@@ -6,4 +6,4 @@ path = "/home/amoda/uber-lite/data_lake/bronze/taxi_trips/ingestion_year=2026/in
 
 df = spark.read.parquet(path)
 
-print(df.select("payment_type").distinct().show(truncate=False))
+print(df.printSchema())

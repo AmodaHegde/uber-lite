@@ -6,7 +6,7 @@ def get_spark_session(app_name: str = "UberLite") -> SparkSession:
         SparkSession.builder.appName(app_name)
         .config(
             "spark.jars.packages",
-            "io.delta:delta-spark_2.12:3.1.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0",
+            "io.delta:delta-spark_2.13:3.2.0,org.apache.spark:spark-sql-kafka-0-10_2.13:3.5.0",
         )
         .config(
             "spark.sql.extensions",
